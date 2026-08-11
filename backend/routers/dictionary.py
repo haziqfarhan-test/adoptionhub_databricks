@@ -21,9 +21,14 @@ CODE_SHEETS  = ['System - Code Table', 'Domain - Code Table']
 
 def _get_db_config():
     host  = os.getenv("DATABRICKS_HOST", "").rstrip("/")
-    token = sql_token()
+    token = current_token()
     if not host or not token:
-        raise HTTPException(500, "DATABRICKS_HOST / DATABRICKS_TOKEN missing from .env")
+        raise HTTPException(
+            500,
+            "DATABRICKS_HOST missing or no access token available. "
+            "In Databricks Apps this should come from X-Forwarded-Access-Token; "
+            "in local dev you may still need DATABRICKS_TOKEN."
+        )
     return host, token
 
 
