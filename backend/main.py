@@ -83,7 +83,8 @@ async def get_me(request: Request):
     elif any(g.startswith("basic_user_") for g in groups):
         role = "basic_user"
     else:
-        role = "unknown"
+        # Temporary bypass: allow users without application groups to access the UI.
+        role = "data_engineer"
 
     return {
         "display_name": data.get("displayName", ""),
