@@ -1,0 +1,113 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────────────
+   Apple Design Tokens — CSS Custom Properties
+   These back the Tailwind rgb(var(--X) / <alpha>) syntax
+   so every dark-* and brand-* utility class auto-adapts
+   to light ↔ dark without touching any JSX.
+───────────────────────────────────────────────────── */
+:root {
+  /* ── Brand: Apple Blue ── */
+  --brand-50:  229 241 253;   /* #e5f1fd */
+  --brand-400: 41  151 255;   /* #2997ff */
+  --brand-500: 0   113 227;   /* #0071e3 */
+  --brand-600: 0   91  191;   /* #005bbf */
+  --brand-700: 0   79  163;   /* #004fa3 */
+
+  /* ── Surface scale (Light mode) ──
+     Note: inverted from dark-mode convention:
+     dark-50  = darkest  (primary text #1d1d1f)
+     dark-950 = lightest (page bg     #f5f5f7)            */
+  --dark-50:  29  29  31;    /* #1d1d1f — primary text    */
+  --dark-100: 58  58  60;    /* #3a3a3c                   */
+  --dark-200: 110 110 115;   /* #6e6e73 — secondary text  */
+  --dark-300: 134 134 139;   /* #86868b — tertiary text   */
+  --dark-400: 174 174 178;   /* #aeaeb2 — faint           */
+  --dark-500: 158 158 163;   /* #9e9ea3 — very faint      */
+  --dark-600: 209 209 214;   /* #d1d1d6 — separator       */
+  --dark-700: 229 229 234;   /* #e5e5ea — subtle divider  */
+  --dark-800: 240 240 245;   /* #f0f0f5 — input bg        */
+  --dark-900: 255 255 255;   /* #ffffff — card bg         */
+  --dark-950: 245 245 247;   /* #f5f5f7 — page bg         */
+
+  /* ui = opaque black in light → used for border-ui/N, hover:bg-ui/N */
+  --ui: 0 0 0;
+
+  color-scheme: light;
+}
+
+.dark {
+  /* ── Brand: Apple Blue (unchanged, slight tint adjustment) ── */
+  --brand-50:  10  60  120;   /* deeper blue for dark-bg tints  */
+  --brand-400: 41  151 255;   /* #2997ff                        */
+  --brand-500: 0   113 227;   /* #0071e3                        */
+  --brand-600: 0   91  191;   /* #005bbf                        */
+  --brand-700: 0   79  163;   /* #004fa3                        */
+
+  /* ── Surface scale (Dark mode) ── */
+  --dark-50:  245 245 247;   /* #f5f5f7 — primary text         */
+  --dark-100: 232 232 237;   /* #e8e8ed                        */
+  --dark-200: 134 134 139;   /* #86868b — secondary text       */
+  --dark-300: 110 110 115;   /* #6e6e73 — tertiary text        */
+  --dark-400: 99  99  102;   /* #636366 — faint                */
+  --dark-500: 72  72  74;    /* #48484a — very faint           */
+  --dark-600: 58  58  60;    /* #3a3a3c — separator            */
+  --dark-700: 58  58  60;    /* #3a3a3c — subtle divider       */
+  --dark-800: 44  44  46;    /* #2c2c2e — input bg             */
+  --dark-900: 28  28  30;    /* #1c1c1e — card bg              */
+  --dark-950: 0   0   0;     /* #000000 — page bg              */
+
+  /* ui = opaque white in dark → border-ui/N = subtle white borders */
+  --ui: 255 255 255;
+
+  color-scheme: dark;
+}
+
+/* ─────────────────────────────────────────────────────
+   Base
+───────────────────────────────────────────────────── */
+@layer base {
+  html {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+      'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    /* Smooth colour transition on theme switch */
+    transition:
+      background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+      color            0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  body {
+    @apply bg-dark-950 text-dark-50;
+    transition:
+      background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+      color            0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  * {
+    transition-timing-function: cubic-bezier(0.25, 1, 0.5, 1);
+  }
+}
+
+/* ─────────────────────────────────────────────────────
+   Scrollbar
+───────────────────────────────────────────────────── */
+::-webkit-scrollbar          { width: 6px; height: 6px; }
+::-webkit-scrollbar-track    { background: transparent; }
+::-webkit-scrollbar-thumb    { background: rgb(0 0 0 / 0.12); border-radius: 99px; }
+.dark ::-webkit-scrollbar-thumb { background: rgb(255 255 255 / 0.12); }
+::-webkit-scrollbar-thumb:hover  { background: rgb(0 113 227 / 0.5); }
+
+/* ─────────────────────────────────────────────────────
+   Focus ring override — Apple blue, no ugly default
+───────────────────────────────────────────────────── */
+@layer utilities {
+  .focus-apple:focus-visible {
+    outline: 2px solid #0071e3;
+    outline-offset: 2px;
+  }
+}
