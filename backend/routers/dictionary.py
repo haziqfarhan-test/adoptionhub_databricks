@@ -5,8 +5,8 @@ import base64
 import asyncio
 import requests
 import openpyxl
-from fastapi import APIRouter, HTTPException, Depends
-from auth import get_user_token, current_token, sql_token
+from fastapi import APIRouter, HTTPException, Depends, Request
+from auth import get_user_token, current_token
 from pydantic import BaseModel
 from typing import List, Dict, Any
 
@@ -19,9 +19,9 @@ DICT_SHEETS = ['System Level', 'Domain Level - All']
 CODE_SHEETS  = ['System - Code Table', 'Domain - Code Table']
 
 
-def _get_db_config():
+def _get_db_config(request: Request):
     host  = os.getenv("DATABRICKS_HOST", "").rstrip("/")
-    token = current_token()
+    token = request.headers.get("X-Forwarded-Access-Token", "") or current_token()
     if not host or not token:
         raise HTTPException(
             500,
@@ -179,8 +179,8 @@ def _build_and_upload_sync(
 
 
 @router.post("/upload-dictionary")
-async def upload_dictionary(req: UploadDictionaryRequest, _: str = Depends(get_user_token)):
-    host, token = _get_db_config()
+async def upload_dictionary(req: UploadDictionaryRequest, request: Request, _: str = Depends(get_user_token)):
+    host, token = _get_db_config(request)
     try:
         full_path = await asyncio.to_thread(
             _build_and_upload_sync, host, token,
