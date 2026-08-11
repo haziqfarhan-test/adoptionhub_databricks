@@ -1,0 +1,9 @@
+command: ["/bin/sh", "-c", ". /app/python/source_code/.venv/bin/activate && cd /app/python/source_code/backend && uvicorn main:app --host 0.0.0.0 --port 8000"]
+
+env:
+  - name: DATABRICKS_HOST
+    value: "https://dbc-ba9f6430-6ec9.cloud.databricks.com"
+  - name: DATABRICKS_HTTP_PATH
+    value: "/sql/1.0/warehouses/e74b1de2658561d9"
+  - name: DATABRICKS_SERVING_ENDPOINT
+    value: "databricks-claude-sonnet-4-6" 

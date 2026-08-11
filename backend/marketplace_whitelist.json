@@ -1,0 +1,30 @@
+[
+  {
+    "catalog": "catalog_sg",
+    "schema": "silver",
+    "table": "tbl_sg_synthetic_data_for_sunray",
+    "description": "The table contains synthetic data for Sunray, including employee information such as workday ID, employment start and end dates, leadership stage, designation, and contact details. It also includes details about their report officer and talent manager. This data can be used to analyze employee demographics, track changes in employment status, and identify trends in leadership development.",
+    "domain": "Services"
+  },
+  {
+    "catalog": "catalog_sg",
+    "schema": "silver",
+    "table": "tbl_sg_synthetic_data_ncss_entity",
+    "description": "This table contains information about programmes, including their unique IDs, funding start and end dates, and names. It also tracks updates and creations with timestamps and job IDs. This data can be used to monitor programme funding timelines, track changes to programme data, and analyze programme metadata.",
+    "domain": "Services"
+  },
+  {
+    "catalog": "catalog_sg",
+    "schema": "gold",
+    "table": "tbl_sg_programme_count_per_employee",
+    "description": "The question of how many programs each employee is involved in is crucial for analyzing employee participation in various organizational activities. This involves examining a dataset to understand the scope of employee engagement.",
+    "domain": "Services"
+  },
+  {
+    "catalog": "catalog_pg",
+    "schema": "silver",
+    "table": "tbl_pg_synthetic_data_philanthropy_agency_details",
+    "description": "The table contains details about philanthropy agencies, including agency information, funding details, and contact information for the CEO. This data can be used to analyze funding trends, identify key agency contacts, and track updates to agency information.",
+    "domain": "Philantrophy"
+  }
+]

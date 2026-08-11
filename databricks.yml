@@ -1,0 +1,15 @@
+bundle:
+  name: adoptionhub
+
+workspace:
+  host: https://dbc-ba9f6430-6ec9.cloud.databricks.com
+
+targets:
+  dev:
+    default: true
+
+resources:
+  apps:
+    adoptionhub:
+      name: "adoptionhub"
+      source_code_path: .
