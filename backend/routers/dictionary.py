@@ -6,7 +6,7 @@ import asyncio
 import requests
 import openpyxl
 from fastapi import APIRouter, HTTPException, Depends, Request
-from auth import get_user_token, current_token
+from auth import get_user_token
 from pydantic import BaseModel
 from typing import List, Dict, Any
 
@@ -54,15 +54,15 @@ def _get_db_config(request: Request):
             "DATABRICKS_HOST missing from environment."
         )
 
-    user_token = request.headers.get("X-Forwarded-Access-Token", "") or current_token()
-    if not user_token:
+    service_token = _get_service_principal_token()
+    if not service_token:
         raise HTTPException(
             500,
-            "No access token available. In Databricks Apps this should come from X-Forwarded-Access-Token;"
-            " in local dev you may need DATABRICKS_TOKEN or DATABRICKS_CLIENT_ID/SECRET."
+            "No service principal token available. "
+            "Set DATABRICKS_TOKEN or DATABRICKS_CLIENT_ID and DATABRICKS_CLIENT_SECRET."
         )
 
-    return host, user_token
+    return host, service_token
 
 
 def normalize_element_name(name: str) -> str:
@@ -180,7 +180,7 @@ def _upload_bytes(host: str, token: str, full_path: str, content: bytes) -> requ
 
 
 def _build_and_upload_sync(
-    host: str, tokens: list[str],
+    host: str, token: str,
     dd: SheetData, mc: SheetData,
     filename: str,
 ) -> str:
@@ -208,45 +208,21 @@ def _build_and_upload_sync(
     full_path = f"{DICT_VOLUME_PATH}/{filename}"
     content = buf.getvalue()
 
-    last_error = None
-    for token in tokens:
-        if not token:
-            continue
-        resp = _upload_bytes(host, token, full_path, content)
-        if resp.status_code in (200, 201, 204):
-            return full_path
-        # Try the next token if the current one is invalid or unauthorized.
-        if resp.status_code in (400, 401, 403):
-            last_error = resp
-            continue
-        raise HTTPException(
-            status_code=resp.status_code,
-            detail=f"Databricks upload failed ({resp.status_code}): {resp.text}",
-        )
-
-    if last_error is not None:
-        raise HTTPException(
-            status_code=last_error.status_code,
-            detail=f"Databricks upload failed ({last_error.status_code}): {last_error.text}",
-        )
-
+    resp = _upload_bytes(host, token, full_path, content)
+    if resp.status_code in (200, 201, 204):
+        return full_path
     raise HTTPException(
-        status_code=500,
-        detail="Databricks upload failed: no valid token was available.",
+        status_code=resp.status_code,
+        detail=f"Databricks upload failed ({resp.status_code}): {resp.text}",
     )
 
 
 @router.post("/upload-dictionary")
 async def upload_dictionary(req: UploadDictionaryRequest, request: Request, _: str = Depends(get_user_token)):
-    host, user_token = _get_db_config(request)
-    service_token = _get_service_principal_token()
-    token_list = [user_token]
-    if service_token and service_token != user_token:
-        token_list.append(service_token)
-
+    host, service_token = _get_db_config(request)
     try:
         full_path = await asyncio.to_thread(
-            _build_and_upload_sync, host, token_list,
+            _build_and_upload_sync, host, service_token,
             req.data_dictionary, req.master_code, req.filename
         )
         return {"status": "uploaded", "path": full_path}

@@ -3,7 +3,7 @@ import base64
 import asyncio
 import requests
 from fastapi import APIRouter, HTTPException, Depends
-from auth import get_user_token, current_token, sql_token
+from auth import get_user_token
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -14,11 +14,38 @@ class UploadFileRequest(BaseModel):
     volume_path: str
 
 
+def _get_service_principal_token() -> str:
+    token = os.getenv("DATABRICKS_TOKEN", "")
+    if token:
+        return token
+
+    host = os.getenv("DATABRICKS_HOST", "").rstrip("/")
+    client_id = os.getenv("DATABRICKS_CLIENT_ID", "")
+    client_secret = os.getenv("DATABRICKS_CLIENT_SECRET", "")
+
+    if not host or not client_id or not client_secret:
+        return ""
+
+    resp = requests.post(
+        f"{host}/oidc/v1/token",
+        data={
+            "grant_type": "client_credentials",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "scope": "all-apis",
+        },
+        timeout=10,
+    )
+    if resp.ok:
+        return resp.json().get("access_token", "")
+    return ""
+
+
 def _get_db_config():
     host  = os.getenv("DATABRICKS_HOST", "").rstrip("/")
-    token = sql_token()
+    token = _get_service_principal_token()
     if not host or not token:
-        raise HTTPException(500, "DATABRICKS_HOST / DATABRICKS_TOKEN missing from .env")
+        raise HTTPException(500, "DATABRICKS_HOST / service principal token missing from environment")
     return host, token
 
 
