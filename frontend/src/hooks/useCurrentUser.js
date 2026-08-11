@@ -10,14 +10,14 @@ export function useCurrentUser() {
     fetch(`${BASE_URL}/api/me`)
       .then(r => r.json())
       .then(data => setUser(data))
-      .catch(() => setUser({ display_name: '', user_name: '', groups: [], role: 'unknown' }))
+      .catch(() => setUser({ display_name: '', user_name: '', groups: [], role: 'data_engineer' }))
       .finally(() => setLoading(false))
   }, [])
 
   return {
     user,
     loading,
-    role:        user?.role         ?? 'unknown',
+    role:        user?.role         ?? 'data_engineer',
     displayName: user?.display_name ?? '',
   }
 }
