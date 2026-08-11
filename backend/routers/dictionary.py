@@ -19,17 +19,50 @@ DICT_SHEETS = ['System Level', 'Domain Level - All']
 CODE_SHEETS  = ['System - Code Table', 'Domain - Code Table']
 
 
+def _get_service_principal_token() -> str:
+    token = os.getenv("DATABRICKS_TOKEN", "")
+    if token:
+        return token
+
+    host = os.getenv("DATABRICKS_HOST", "").rstrip("/")
+    client_id = os.getenv("DATABRICKS_CLIENT_ID", "")
+    client_secret = os.getenv("DATABRICKS_CLIENT_SECRET", "")
+
+    if not host or not client_id or not client_secret:
+        return ""
+
+    resp = requests.post(
+        f"{host}/oidc/v1/token",
+        data={
+            "grant_type": "client_credentials",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "scope": "all-apis",
+        },
+        timeout=10,
+    )
+    if resp.ok:
+        return resp.json().get("access_token", "")
+    return ""
+
+
 def _get_db_config(request: Request):
     host  = os.getenv("DATABRICKS_HOST", "").rstrip("/")
-    token = request.headers.get("X-Forwarded-Access-Token", "") or current_token()
-    if not host or not token:
+    if not host:
         raise HTTPException(
             500,
-            "DATABRICKS_HOST missing or no access token available. "
-            "In Databricks Apps this should come from X-Forwarded-Access-Token; "
-            "in local dev you may still need DATABRICKS_TOKEN."
+            "DATABRICKS_HOST missing from environment."
         )
-    return host, token
+
+    user_token = request.headers.get("X-Forwarded-Access-Token", "") or current_token()
+    if not user_token:
+        raise HTTPException(
+            500,
+            "No access token available. In Databricks Apps this should come from X-Forwarded-Access-Token;"
+            " in local dev you may need DATABRICKS_TOKEN or DATABRICKS_CLIENT_ID/SECRET."
+        )
+
+    return host, user_token
 
 
 def normalize_element_name(name: str) -> str:
@@ -136,8 +169,18 @@ def _write_sheet(wb, title: str, headers: list, rows: list, first: bool = False)
         ws.append([_cell_value(row, h) for h in headers])
 
 
+def _upload_bytes(host: str, token: str, full_path: str, content: bytes) -> requests.Response:
+    url = f"{host}/api/2.0/fs/files{full_path}"
+    return requests.put(
+        url,
+        headers={"Authorization": f"Bearer {token}"},
+        params={"overwrite": "true"},
+        data=content,
+    )
+
+
 def _build_and_upload_sync(
-    host: str, token: str,
+    host: str, tokens: list[str],
     dd: SheetData, mc: SheetData,
     filename: str,
 ) -> str:
@@ -163,27 +206,47 @@ def _build_and_upload_sync(
     buf.seek(0)
 
     full_path = f"{DICT_VOLUME_PATH}/{filename}"
-    url = f"{host}/api/2.0/fs/files{full_path}"
-    resp = requests.put(
-        url,
-        headers={"Authorization": f"Bearer {token}"},
-        params={"overwrite": "true"},
-        data=buf.getvalue(),
-    )
-    if resp.status_code not in (200, 201, 204):
+    content = buf.getvalue()
+
+    last_error = None
+    for token in tokens:
+        if not token:
+            continue
+        resp = _upload_bytes(host, token, full_path, content)
+        if resp.status_code in (200, 201, 204):
+            return full_path
+        # Try the next token if the current one is invalid or unauthorized.
+        if resp.status_code in (400, 401, 403):
+            last_error = resp
+            continue
         raise HTTPException(
             status_code=resp.status_code,
             detail=f"Databricks upload failed ({resp.status_code}): {resp.text}",
         )
-    return full_path
+
+    if last_error is not None:
+        raise HTTPException(
+            status_code=last_error.status_code,
+            detail=f"Databricks upload failed ({last_error.status_code}): {last_error.text}",
+        )
+
+    raise HTTPException(
+        status_code=500,
+        detail="Databricks upload failed: no valid token was available.",
+    )
 
 
 @router.post("/upload-dictionary")
 async def upload_dictionary(req: UploadDictionaryRequest, request: Request, _: str = Depends(get_user_token)):
-    host, token = _get_db_config(request)
+    host, user_token = _get_db_config(request)
+    service_token = _get_service_principal_token()
+    token_list = [user_token]
+    if service_token and service_token != user_token:
+        token_list.append(service_token)
+
     try:
         full_path = await asyncio.to_thread(
-            _build_and_upload_sync, host, token,
+            _build_and_upload_sync, host, token_list,
             req.data_dictionary, req.master_code, req.filename
         )
         return {"status": "uploaded", "path": full_path}
