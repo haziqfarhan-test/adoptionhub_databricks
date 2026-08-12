@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 
 # Import shared helpers from files.py to avoid duplication.
 from routers.files import normalize_column_name, clean_filename, TYPE_MAP
+from auth import current_token, extract_llm_text
 
 load_dotenv()
 router = APIRouter()
@@ -126,7 +127,7 @@ def _call_readiness_sync(summary: dict, columns: list) -> dict:
     Uses the exact same pattern as _call_serving_sync in routers/ai.py.
     """
     host     = os.getenv("DATABRICKS_HOST", "").rstrip("/")
-    token    = os.getenv("DATABRICKS_TOKEN", "")
+    token    = current_token()
     endpoint = os.getenv("DATABRICKS_SERVING_ENDPOINT", "")
 
     _fallback = {
@@ -180,7 +181,7 @@ def _call_readiness_sync(summary: dict, columns: list) -> dict:
             timeout=60,
         )
         resp.raise_for_status()
-        content = resp.json()["choices"][0]["message"]["content"].strip()
+        content = extract_llm_text(resp.json()["choices"][0]["message"]).strip()
 
         # Strip markdown fences if the model wrapped the response
         if content.startswith("```"):

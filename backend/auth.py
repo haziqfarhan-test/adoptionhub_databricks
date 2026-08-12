@@ -93,3 +93,16 @@ def current_token() -> str:
 def sql_token() -> str:
     """SQL warehouse connections — service principal token."""
     return service_principal_token()
+
+
+def extract_llm_text(message: dict) -> str:
+    """Model Serving chat-completion message content — reasoning models (e.g.
+    databricks-gpt-oss-120b) return `content` as a list of content-block dicts
+    instead of a plain string; plain chat models return a string. Normalize both."""
+    content = message.get("content", "")
+    if isinstance(content, list):
+        return "".join(
+            part.get("text", "") if isinstance(part, dict) else str(part)
+            for part in content
+        )
+    return content or ""

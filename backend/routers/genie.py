@@ -24,7 +24,7 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends
-from auth import get_user_token, current_token, sql_token
+from auth import get_user_token, current_token, sql_token, extract_llm_text
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -212,7 +212,7 @@ def _call_llm_sync(prompt: str, max_tokens: int = 600) -> str:
     )
     if resp.status_code != 200:
         raise HTTPException(500, f"LLM call failed ({resp.status_code}): {resp.text}")
-    return resp.json()["choices"][0]["message"]["content"].strip()
+    return extract_llm_text(resp.json()["choices"][0]["message"]).strip()
 
 
 # ── Phase 0: Suitability check ────────────────────────────────────────────────
