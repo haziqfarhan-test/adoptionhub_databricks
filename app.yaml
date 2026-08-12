@@ -6,4 +6,4 @@ env:
   - name: DATABRICKS_HTTP_PATH
     value: "/sql/1.0/warehouses/594e3fa04e4efe25"
   - name: DATABRICKS_SERVING_ENDPOINT
-    value: "databricks-claude-sonnet-4-6"
+    value: "databricks-gpt-oss-120b"
