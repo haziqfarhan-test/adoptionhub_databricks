@@ -2,7 +2,7 @@ bundle:
   name: adoptionhub
 
 workspace:
-  host: https://dbc-ba9f6430-6ec9.cloud.databricks.com
+  host: https://dbc-4ae1d974-bd72.cloud.databricks.com
 
 targets:
   dev:
