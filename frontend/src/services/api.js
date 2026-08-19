@@ -39,6 +39,26 @@ export async function listConfigs() {
   return data
 }
 
+export async function listDomains() {
+  const { data } = await api.get('/api/domains')
+  return data
+}
+
+export async function createDomain(name) {
+  const { data } = await api.post('/api/domains', { name })
+  return data
+}
+
+export async function getConfigTableStatus() {
+  const { data } = await api.get('/api/config-table-status')
+  return data
+}
+
+export async function createConfigTable() {
+  const { data } = await api.post('/api/config-table')
+  return data
+}
+
 export async function uploadToVolume(file, volumePath) {
   const body = await fileToBase64(file)
   const { data } = await api.post('/api/upload-to-volume', { ...body, volume_path: volumePath })
