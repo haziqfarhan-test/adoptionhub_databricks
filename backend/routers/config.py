@@ -368,9 +368,9 @@ def _create_domain_sync(domain: str) -> str:
     try:
         cursor.execute(f"CREATE CATALOG IF NOT EXISTS {catalog}")
         try:
-            cursor.execute(f"GRANT MANAGE ON CATALOG {catalog} TO `{ADMIN_GROUP}`")
+            cursor.execute(f"GRANT ALL PRIVILEGES ON CATALOG {catalog} TO `{ADMIN_GROUP}`")
         except Exception as e:
-            print(f"[_create_domain_sync] WARNING: could not grant MANAGE on {catalog} to '{ADMIN_GROUP}': {e}")
+            print(f"[_create_domain_sync] WARNING: could not grant ALL PRIVILEGES on {catalog} to '{ADMIN_GROUP}': {e}")
         for schema in DOMAIN_SCHEMAS:
             cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema}")
         for volume in RAW_VOLUMES:
@@ -484,6 +484,10 @@ def _create_config_table_sync():
     cursor = conn.cursor()
     try:
         cursor.execute(f"CREATE CATALOG IF NOT EXISTS {CONFIG_CATALOG}")
+        try:
+            cursor.execute(f"GRANT ALL PRIVILEGES ON CATALOG {CONFIG_CATALOG} TO `{ADMIN_GROUP}`")
+        except Exception as e:
+            print(f"[_create_config_table_sync] WARNING: could not grant ALL PRIVILEGES on {CONFIG_CATALOG} to '{ADMIN_GROUP}': {e}")
         cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {CONFIG_CATALOG}.{CONFIG_SCHEMA}")
         cursor.execute(CONFIG_TABLE_DDL)
     finally:
