@@ -7,3 +7,5 @@ env:
     value: "/sql/1.0/warehouses/594e3fa04e4efe25"
   - name: DATABRICKS_SERVING_ENDPOINT
     value: "databricks-gpt-oss-120b"
+  - name: UC_ADMIN_GROUP
+    value: "admin"
