@@ -448,6 +448,7 @@ CREATE TABLE IF NOT EXISTS {TABLE_REF} (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
 ) USING DELTA
+TBLPROPERTIES ('delta.feature.allowColumnDefaults' = 'supported')
 """
 
 def _config_table_status_sync() -> dict:
