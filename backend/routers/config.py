@@ -83,12 +83,14 @@ def validate_domain_name(name: str) -> str:
     return name
 
 def remove_date_suffix(name: str) -> str:
-    name = re.sub(r'[_\-]?\d{4}[_\-]?\d{2}[_\-]?\d{2}$', '', name)
-    name = re.sub(r'[_\-]?\d{2}[_\-]?\d{2}[_\-]?\d{4}$', '', name)
-    name = re.sub(r'[_\-]?\d{8}$', '', name)
-    name = re.sub(r'[_\-]?\d{4}$', '', name)
-    name = re.sub(r'_+$', '', name)
-    return name.strip('_')
+    """Strip a trailing run-date stamp (e.g. _20260811, _2026-08-11) only —
+    never a lone trailing 4-digit number, since that can be meaningful content
+    (e.g. a year within the name, like "...2020 to 2024")."""
+    name = re.sub(r'[_\-\s]?\d{4}[_\-]?\d{2}[_\-]?\d{2}$', '', name)
+    name = re.sub(r'[_\-\s]?\d{2}[_\-]?\d{2}[_\-]?\d{4}$', '', name)
+    name = re.sub(r'[_\-\s]?\d{8}$', '', name)
+    name = re.sub(r'[_\-\s]+$', '', name)
+    return name.strip('_ -')
 
 # ─────────────────────────────────────────────
 # Models
