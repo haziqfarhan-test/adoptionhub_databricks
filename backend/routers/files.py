@@ -28,12 +28,14 @@ def clean(val):
     return val
 
 def clean_filename(name: str) -> str:
-    """Clean filename into a safe snake_case table/job name."""
+    """Clean filename into a safe snake_case table/job name. Strips a trailing
+    run-date stamp (e.g. _20260811) only — never a lone trailing 4-digit
+    number, since that can be meaningful content (e.g. a year within the
+    name, like "...2020_to_2024")."""
     name = name.rsplit('.', 1)[0]
     name = re.sub(r'[^a-zA-Z0-9]+', '_', name)
     name = re.sub(r'_?\d{4}_?\d{2}_?\d{2}$', '', name)
     name = re.sub(r'_?\d{2}_?\d{2}_?\d{4}$', '', name)
-    name = re.sub(r'_\d{4}$', '', name)
     name = re.sub(r'_+', '_', name)
     name = name.strip('_').lower()
     return name
