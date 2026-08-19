@@ -359,12 +359,15 @@ def _list_domains_sync() -> List[str]:
         if name.startswith("catalog_") and name[len("catalog_"):] not in RESERVED_DOMAIN_NAMES
     )
 
+ADMIN_GROUP = "admins"
+
 def _create_domain_sync(domain: str) -> str:
     catalog = f"catalog_{domain}"
     conn    = get_conn()
     cursor  = conn.cursor()
     try:
         cursor.execute(f"CREATE CATALOG IF NOT EXISTS {catalog}")
+        cursor.execute(f"GRANT MANAGE ON CATALOG {catalog} TO `{ADMIN_GROUP}`")
         for schema in DOMAIN_SCHEMAS:
             cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema}")
         for volume in RAW_VOLUMES:
