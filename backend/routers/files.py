@@ -31,8 +31,8 @@ def clean_filename(name: str) -> str:
     """Clean filename into a safe snake_case table/job name."""
     name = name.rsplit('.', 1)[0]
     name = re.sub(r'[^a-zA-Z0-9]+', '_', name)
-    name = re.sub(r'_?\d{4}_?\d{2}_?\d{2}', '', name)
-    name = re.sub(r'_?\d{2}_?\d{2}_?\d{4}', '', name)
+    name = re.sub(r'_?\d{4}_?\d{2}_?\d{2}$', '', name)
+    name = re.sub(r'_?\d{2}_?\d{2}_?\d{4}$', '', name)
     name = re.sub(r'_\d{4}$', '', name)
     name = re.sub(r'_+', '_', name)
     name = name.strip('_').lower()

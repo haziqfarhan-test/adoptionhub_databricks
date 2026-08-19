@@ -209,7 +209,8 @@ def _save_sync(row: dict):
         f"{sql_literal(c, row.get(c))} AS {c}" for c in MERGE_COLS
     )
     update_parts = ",\n        ".join(
-        f"target.{c} = source.{c}" for c in MERGE_COLS if c != "job_name"
+        [f"target.{c} = source.{c}" for c in MERGE_COLS if c != "job_name"]
+        + ["target.updated_at = CURRENT_TIMESTAMP()"]
     )
     insert_cols = ", ".join(MERGE_COLS)
     insert_vals = ", ".join(f"source.{c}" for c in MERGE_COLS)
