@@ -65,13 +65,32 @@ def is_valid_db_column(name: str) -> bool:
         return False
     return True
 
+RESERVED_DOMAIN_NAMES = {"central", "cross_ncss"}
+DOMAIN_NAME_RE = re.compile(r'^[a-z][a-z0-9_]{0,50}$')
+
+def validate_domain_name(name: str) -> str:
+    name = (name or "").strip().lower()
+    if not name:
+        raise HTTPException(400, "New domain name is required")
+    if not DOMAIN_NAME_RE.match(name):
+        raise HTTPException(
+            400,
+            "Domain name must start with a lowercase letter and contain only "
+            "lowercase letters, numbers, and underscores",
+        )
+    if name in RESERVED_DOMAIN_NAMES:
+        raise HTTPException(400, f"'{name}' is a reserved name and cannot be used as a domain")
+    return name
+
 def remove_date_suffix(name: str) -> str:
-    name = re.sub(r'[_\-]?\d{4}[_\-]?\d{2}[_\-]?\d{2}$', '', name)
-    name = re.sub(r'[_\-]?\d{2}[_\-]?\d{2}[_\-]?\d{4}$', '', name)
-    name = re.sub(r'[_\-]?\d{8}$', '', name)
-    name = re.sub(r'[_\-]?\d{4}$', '', name)
-    name = re.sub(r'_+$', '', name)
-    return name.strip('_')
+    """Strip a trailing run-date stamp (e.g. _20260811, _2026-08-11) only —
+    never a lone trailing 4-digit number, since that can be meaningful content
+    (e.g. a year within the name, like "...2020 to 2024")."""
+    name = re.sub(r'[_\-\s]?\d{4}[_\-]?\d{2}[_\-]?\d{2}$', '', name)
+    name = re.sub(r'[_\-\s]?\d{2}[_\-]?\d{2}[_\-]?\d{4}$', '', name)
+    name = re.sub(r'[_\-\s]?\d{8}$', '', name)
+    name = re.sub(r'[_\-\s]+$', '', name)
+    return name.strip('_ -')
 
 # ─────────────────────────────────────────────
 # Models
@@ -192,7 +211,8 @@ def _save_sync(row: dict):
         f"{sql_literal(c, row.get(c))} AS {c}" for c in MERGE_COLS
     )
     update_parts = ",\n        ".join(
-        f"target.{c} = source.{c}" for c in MERGE_COLS if c != "job_name"
+        [f"target.{c} = source.{c}" for c in MERGE_COLS if c != "job_name"]
+        + ["target.updated_at = CURRENT_TIMESTAMP()"]
     )
     insert_cols = ", ".join(MERGE_COLS)
     insert_vals = ", ".join(f"source.{c}" for c in MERGE_COLS)
@@ -315,5 +335,179 @@ async def list_configs(_: str = Depends(get_user_token)):
         return rows
     try:
         return await asyncio.to_thread(_list)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ─────────────────────────────────────────────
+# Domain (catalog) discovery + creation
+# ─────────────────────────────────────────────
+RAW_VOLUMES = ["file_upload", "ad_hoc_upload", "archive"]
+DOMAIN_SCHEMAS = ["raw", "bronze", "silver", "gold"]
+
+class DomainCreate(BaseModel):
+    name: str
+
+def _list_domains_sync() -> List[str]:
+    conn   = get_conn()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SHOW CATALOGS")
+        names = [row[0] for row in cursor.fetchall()]
+    finally:
+        cursor.close()
+        conn.close()
+    return sorted(
+        name[len("catalog_"):]
+        for name in names
+        if name.startswith("catalog_") and name[len("catalog_"):] not in RESERVED_DOMAIN_NAMES
+    )
+
+ADMIN_GROUP = os.getenv("UC_ADMIN_GROUP", "admins")
+
+def _create_domain_sync(domain: str) -> str:
+    catalog = f"catalog_{domain}"
+    conn    = get_conn()
+    cursor  = conn.cursor()
+    try:
+        cursor.execute(f"CREATE CATALOG IF NOT EXISTS {catalog}")
+        try:
+            cursor.execute(f"GRANT ALL PRIVILEGES ON CATALOG {catalog} TO `{ADMIN_GROUP}`")
+        except Exception as e:
+            print(f"[_create_domain_sync] WARNING: could not grant ALL PRIVILEGES on {catalog} to '{ADMIN_GROUP}': {e}")
+        for schema in DOMAIN_SCHEMAS:
+            cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema}")
+        for volume in RAW_VOLUMES:
+            cursor.execute(f"CREATE VOLUME IF NOT EXISTS {catalog}.raw.{volume}")
+    finally:
+        cursor.close()
+        conn.close()
+    return catalog
+
+@router.get("/domains")
+async def list_domains(_: str = Depends(get_user_token)):
+    try:
+        domains = await asyncio.to_thread(_list_domains_sync)
+        return {"domains": domains}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/domains")
+async def create_domain(req: DomainCreate, _: str = Depends(get_user_token)):
+    name = validate_domain_name(req.name)
+    try:
+        catalog = await asyncio.to_thread(_create_domain_sync, name)
+        return {"status": "created", "domain": name, "catalog": catalog}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ─────────────────────────────────────────────
+# Config table existence check + bootstrap
+# ─────────────────────────────────────────────
+CONFIG_CATALOG = "catalog_central"
+CONFIG_SCHEMA  = "medallion_config"
+CONFIG_TABLE   = "tbl_config"
+
+CONFIG_TABLE_DDL = f"""
+CREATE TABLE IF NOT EXISTS {TABLE_REF} (
+    id BIGINT GENERATED ALWAYS AS IDENTITY,
+    job_name STRING NOT NULL,
+    source_system STRING,
+    target_category STRING,
+    active BOOLEAN,
+    load_sequence INT,
+    owner STRING,
+    domain STRING,
+    source_entity_name STRING,
+    source_type STRING,
+    source_filename STRING,
+    source_path STRING,
+    source_delimiter STRING,
+    pipeline_name STRING,
+    lakehouse_group STRING,
+    bronze_catalog_name STRING,
+    bronze_schema_name STRING,
+    bronze_table_name STRING,
+    bronze_table_path STRING,
+    bronze_archive_path STRING,
+    bronze_column_order STRING,
+    bronze_write_mode STRING,
+    bronze_schema_mapping STRING,
+    bronze_load_type STRING,
+    bronze_active_status BOOLEAN,
+    bronze_silver_count_table_path STRING,
+    silver_catalog_name STRING,
+    silver_schema_name STRING,
+    silver_table_name STRING,
+    silver_curated_path STRING,
+    silver_history_path STRING,
+    silver_invalid_path STRING,
+    silver_column_order STRING,
+    silver_write_mode STRING,
+    silver_schema_mapping STRING,
+    silver_primary_key STRING,
+    silver_merge_keys STRING,
+    silver_partition_key STRING,
+    silver_mandatory_columns STRING,
+    silver_filter_condition STRING,
+    silver_load_type STRING,
+    silver_active_status BOOLEAN,
+    sheet_name STRING,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
+) USING DELTA
+TBLPROPERTIES ('delta.feature.allowColumnDefaults' = 'supported')
+"""
+
+def _config_table_status_sync() -> dict:
+    conn   = get_conn()
+    cursor = conn.cursor()
+    catalog_exists = schema_exists = table_exists = False
+    try:
+        cursor.execute(f"SHOW CATALOGS LIKE '{CONFIG_CATALOG}'")
+        catalog_exists = len(cursor.fetchall()) > 0
+        if catalog_exists:
+            cursor.execute(f"SHOW SCHEMAS IN {CONFIG_CATALOG} LIKE '{CONFIG_SCHEMA}'")
+            schema_exists = len(cursor.fetchall()) > 0
+        if schema_exists:
+            cursor.execute(f"SHOW TABLES IN {CONFIG_CATALOG}.{CONFIG_SCHEMA} LIKE '{CONFIG_TABLE}'")
+            table_exists = len(cursor.fetchall()) > 0
+    finally:
+        cursor.close()
+        conn.close()
+    return {
+        "catalog_exists": catalog_exists,
+        "schema_exists":  schema_exists,
+        "table_exists":   table_exists,
+    }
+
+def _create_config_table_sync():
+    conn   = get_conn()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(f"CREATE CATALOG IF NOT EXISTS {CONFIG_CATALOG}")
+        try:
+            cursor.execute(f"GRANT ALL PRIVILEGES ON CATALOG {CONFIG_CATALOG} TO `{ADMIN_GROUP}`")
+        except Exception as e:
+            print(f"[_create_config_table_sync] WARNING: could not grant ALL PRIVILEGES on {CONFIG_CATALOG} to '{ADMIN_GROUP}': {e}")
+        cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {CONFIG_CATALOG}.{CONFIG_SCHEMA}")
+        cursor.execute(CONFIG_TABLE_DDL)
+    finally:
+        cursor.close()
+        conn.close()
+
+@router.get("/config-table-status")
+async def config_table_status(_: str = Depends(get_user_token)):
+    try:
+        return await asyncio.to_thread(_config_table_status_sync)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/config-table")
+async def create_config_table(_: str = Depends(get_user_token)):
+    try:
+        await asyncio.to_thread(_create_config_table_sync)
+        return await asyncio.to_thread(_config_table_status_sync)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

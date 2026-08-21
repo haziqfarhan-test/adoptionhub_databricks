@@ -24,12 +24,32 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends
-from auth import get_user_token, current_token, sql_token
+from auth import get_user_token, current_token, sql_token, extract_llm_text
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
 load_dotenv()
-router = APIRouter()
+
+# Marketplace is disabled pending a redesign of table-level access control.
+# _get_accessible_tables_sync() used to scope whitelisted tables to the calling
+# user's own Unity Catalog grants via their forwarded OBO token; now that every
+# backend call runs as the app's service principal, that per-user check would
+# silently grant every user whatever the service principal can see. Gate the
+# whole router shut (rather than just hiding the frontend) so the endpoints
+# can't be reached directly either. Flip MARKETPLACE_ENABLED=true once a
+# replacement access-control mechanism is in place.
+MARKETPLACE_ENABLED = os.getenv("MARKETPLACE_ENABLED", "false").lower() == "true"
+
+
+def _require_marketplace_enabled():
+    if not MARKETPLACE_ENABLED:
+        raise HTTPException(
+            503,
+            "Marketplace is temporarily unavailable — under development.",
+        )
+
+
+router = APIRouter(dependencies=[Depends(_require_marketplace_enabled)])
 
 # ── Config ────────────────────────────────────────────────────────────────────
 WHITELIST_PATH    = Path(__file__).parent.parent / "marketplace_whitelist.json"
@@ -192,7 +212,7 @@ def _call_llm_sync(prompt: str, max_tokens: int = 600) -> str:
     )
     if resp.status_code != 200:
         raise HTTPException(500, f"LLM call failed ({resp.status_code}): {resp.text}")
-    return resp.json()["choices"][0]["message"]["content"].strip()
+    return extract_llm_text(resp.json()["choices"][0]["message"]).strip()
 
 
 # ── Phase 0: Suitability check ────────────────────────────────────────────────

@@ -5,7 +5,10 @@ import FileDropzone from '../components/FileDropzone'
 import MetadataGrid from '../components/MetadataGrid'
 import ConfigSummary from '../components/ConfigSummary'
 import DictionarySection from '../components/DictionarySection'
-import { parseFile, enrichWithAI, saveConfig } from '../services/api'
+import {
+  parseFile, enrichWithAI, saveConfig,
+  listDomains, createDomain, getConfigTableStatus, createConfigTable,
+} from '../services/api'
 import { Sparkles, Save, RotateCcw, AlertTriangle, ChevronDown, ChevronUp, Database, BookOpen } from 'lucide-react'
 
 const SUBSECTIONS = [
@@ -23,7 +26,7 @@ const SUBSECTIONS = [
   },
 ]
 
-const DOMAINS             = ['sg', 'pg', 'cg', 'cag', 'hr', 'srg']
+const NEW_DOMAIN_OPTION   = '__new_domain__'
 const TARGET_CATEGORIES   = ['daily', 'weekly', 'monthly', 'yearly']
 const SILVER_LOAD_TYPES   = ['incremental', 'overwrite']
 
@@ -183,10 +186,63 @@ export default function MetadataPage() {
   const uploadedFileRef = useRef(null)
   const [validationErrors, setValidationErrors] = useState([])
 
+  // Domain (catalog) discovery + "add new domain" flow
+  const [domains, setDomains]             = useState([])
+  const [domainsLoading, setDomainsLoading] = useState(true)
+  const [newDomainName, setNewDomainName] = useLocalStorage('ah_new_domain_name', '')
+
+  // Config table gate — null while checking
+  const [configTableStatus, setConfigTableStatus]   = useState(null)
+  const [configTableCreating, setConfigTableCreating] = useState(false)
+  const [configTableError, setConfigTableError]       = useState('')
+
   function set(field) { return val => setCfg(c => ({ ...c, [field]: val })) }
 
+  async function refreshDomains() {
+    setDomainsLoading(true)
+    try {
+      const { domains: list } = await listDomains()
+      setDomains(list)
+    } catch (e) {
+      console.error('Failed to load domains', e)
+    } finally {
+      setDomainsLoading(false)
+    }
+  }
+
+  async function refreshConfigTableStatus() {
+    try {
+      const status = await getConfigTableStatus()
+      setConfigTableStatus(status)
+    } catch (e) {
+      setConfigTableStatus({ catalog_exists: false, schema_exists: false, table_exists: false })
+    }
+  }
+
+  async function handleCreateConfigTable() {
+    setConfigTableCreating(true)
+    setConfigTableError('')
+    try {
+      await createConfigTable()
+      await refreshConfigTableStatus()
+    } catch (e) {
+      setConfigTableError(e.response?.data?.detail || e.message)
+    } finally {
+      setConfigTableCreating(false)
+    }
+  }
+
   useEffect(() => {
-    const catalog   = `catalog_${cfg.domain}`
+    refreshDomains()
+    refreshConfigTableStatus()
+  }, [])
+
+  useEffect(() => {
+    const effectiveDomain = cfg.domain === NEW_DOMAIN_OPTION
+      ? newDomainName.trim().toLowerCase()
+      : cfg.domain
+    if (!effectiveDomain) return
+    const catalog   = `catalog_${effectiveDomain}`
     const silver_tn = cfg.silver_table_name
     setCfg(c => ({
       ...c,
@@ -198,7 +254,7 @@ export default function MetadataPage() {
       silver_history_path: silver_tn ? `${catalog}.silver.${silver_tn}_hist` : '',
       silver_invalid_path: silver_tn ? `${catalog}.silver.${silver_tn}_reject` : '',
     }))
-  }, [cfg.domain, cfg.silver_table_name])
+  }, [cfg.domain, newDomainName, cfg.silver_table_name])
 
   // Listen for Data Profiling handoff. MetadataPage is always mounted (never unmounted),
   // so localStorage writes from ProfilePage don't update state here. The event bypasses
@@ -241,7 +297,7 @@ export default function MetadataPage() {
         source_delimiter:   fm.source_delimiter,
         bronze_table_name:  tbl,
         silver_table_name:  tbl,
-        source_path:        `/Volumes/catalog_${c.domain}/raw/file_upload/`,
+        source_path:        `/Volumes/catalog_${c.domain === NEW_DOMAIN_OPTION ? newDomainName.trim().toLowerCase() : c.domain}/raw/file_upload/`,
       }))
       setStep('edit')
     } catch (e) { alert('Error parsing file: ' + e.message) }
@@ -283,10 +339,23 @@ export default function MetadataPage() {
     setValidationErrors([])
     setLoading(true)
     try {
-      const result = await saveConfig({ ...cfg, columns })
+      let domainToSave = cfg.domain
+      if (cfg.domain === NEW_DOMAIN_OPTION) {
+        const trimmed = newDomainName.trim().toLowerCase()
+        if (!trimmed) throw new Error('New domain name is required')
+        await createDomain(trimmed)
+        domainToSave = trimmed
+        await refreshDomains()
+      }
+      const result = await saveConfig({ ...cfg, domain: domainToSave, columns })
       setSaved(result)
       setStep('saved')
-    } catch (e) { alert('Save failed: ' + e.message) }
+      setCfg(c => ({ ...c, domain: domainToSave }))
+      setNewDomainName('')
+    } catch (e) {
+      const detail = e.response?.data?.detail
+      alert('Save failed: ' + (detail || e.message))
+    }
     finally { setLoading(false) }
   }
 
@@ -299,9 +368,11 @@ export default function MetadataPage() {
     setUploadedFile(null)
     setValidationErrors([])
     setActiveTab('dataset')
+    setNewDomainName('')
   }
 
-  const canSave    = cfg.job_name && cfg.source_path && cfg.domain
+  const effectiveDomain = cfg.domain === NEW_DOMAIN_OPTION ? newDomainName.trim().toLowerCase() : cfg.domain
+  const canSave    = cfg.job_name && cfg.source_path && effectiveDomain && configTableStatus?.table_exists
   const hasErrors  = validationErrors.length > 0
   const pkCount    = columns.filter(c => c.is_primary_key).length
 
@@ -355,6 +426,43 @@ export default function MetadataPage() {
       {/* ── Dataset subsection — always mounted so job run state survives tab switches ── */}
       <div className={activeTab !== 'dataset' ? 'hidden' : ''}>
 
+      {configTableStatus === null && (
+        <div className="text-center py-12 text-sm text-dark-200">Checking configuration table…</div>
+      )}
+
+      {configTableStatus && !configTableStatus.table_exists && (
+        <Section title="Configuration table required">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={18} className="text-red-500 dark:text-red-400 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-red-600 dark:text-red-400">No Config Table Created!</p>
+              <p className="text-xs text-dark-200 mt-1.5 leading-relaxed">
+                <code className="text-[11px] bg-dark-800 px-1.5 py-0.5 rounded-md">
+                  catalog_central.medallion_config.tbl_config
+                </code>{' '}
+                does not exist yet. Create it to start configuring datasets — this also creates the{' '}
+                <code className="text-[11px] bg-dark-800 px-1.5 py-0.5 rounded-md">catalog_central</code> catalog
+                and{' '}
+                <code className="text-[11px] bg-dark-800 px-1.5 py-0.5 rounded-md">medallion_config</code> schema
+                automatically if they are missing.
+              </p>
+              {configTableError && (
+                <p className="text-xs text-red-500 dark:text-red-400 mt-2">{configTableError}</p>
+              )}
+              <button
+                onClick={handleCreateConfigTable}
+                disabled={configTableCreating}
+                className="mt-3 flex items-center gap-2 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white
+                           text-sm font-semibold rounded-xl disabled:opacity-40 transition-all duration-200 active:scale-95">
+                {configTableCreating ? 'Creating…' : 'Create Config Table'}
+              </button>
+            </div>
+          </div>
+        </Section>
+      )}
+
+      {configTableStatus?.table_exists && <>
+
       {step === 'upload' && <FileDropzone onFile={handleFileDrop} loading={loading} />}
 
       {step === 'edit' && (
@@ -363,8 +471,41 @@ export default function MetadataPage() {
           {/* Required fields */}
           <Section title="Required fields" subtitle="Select domain and target category — everything else auto-fills.">
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Domain" required value={cfg.domain} onChange={set('domain')}
-                options={DOMAINS} hint="Drives catalog_<domain> naming across all layers" />
+              <div>
+                <label className="text-[11px] text-dark-200 block mb-1.5 font-semibold tracking-wide uppercase">
+                  Domain<span className="text-red-500 dark:text-red-400 ml-0.5">*</span>
+                </label>
+                <select
+                  disabled={domainsLoading}
+                  value={cfg.domain}
+                  onChange={e => set('domain')(e.target.value)}
+                  className="w-full bg-dark-800 border border-ui/[0.08] rounded-xl px-3 py-2 text-sm text-dark-50
+                             focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500
+                             disabled:opacity-40 disabled:cursor-not-allowed
+                             transition-all duration-200 cursor-pointer">
+                  {domains.map(d => <option key={d} value={d}>{d}</option>)}
+                  <option value={NEW_DOMAIN_OPTION}>+ Add new domain</option>
+                </select>
+                <p className="text-[10px] text-dark-300 mt-1.5 leading-relaxed">
+                  {domainsLoading ? 'Loading available catalogs…' : 'Drives catalog_<domain> naming across all layers'}
+                </p>
+                {cfg.domain === NEW_DOMAIN_OPTION && (
+                  <div className="mt-2">
+                    <input
+                      value={newDomainName}
+                      onChange={e => setNewDomainName(e.target.value)}
+                      placeholder="e.g. finance"
+                      required
+                      className="w-full bg-dark-800 border border-brand-500/40 rounded-xl px-3 py-2 text-sm text-dark-50
+                                 focus:outline-none focus:ring-2 focus:ring-brand-500/50 focus:border-brand-500
+                                 placeholder:text-dark-400 transition-all duration-200" />
+                    <p className="text-[10px] text-dark-300 mt-1.5 leading-relaxed">
+                      New domain name (required) — on save this creates catalog_&lt;name&gt; with raw/bronze/silver/gold
+                      schemas and file_upload, ad_hoc_upload, archive volumes under raw.
+                    </p>
+                  </div>
+                )}
+              </div>
               <Field label="Target category" required value={cfg.target_category}
                 onChange={set('target_category')} options={TARGET_CATEGORIES} />
             </div>
@@ -467,6 +608,8 @@ export default function MetadataPage() {
       {step === 'saved' && saved && (
         <ConfigSummary config={saved} file={uploadedFile ?? uploadedFileRef.current} onReset={handleReset} />
       )}
+
+      </>}
 
       </div>
 

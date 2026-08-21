@@ -3,7 +3,7 @@ import base64
 import asyncio
 import requests
 from fastapi import APIRouter, HTTPException, Depends
-from auth import get_user_token, current_token, sql_token
+from auth import get_user_token, service_principal_token
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -15,11 +15,10 @@ class UploadFileRequest(BaseModel):
 
 
 def _get_db_config():
-    host  = os.getenv("DATABRICKS_HOST", "").rstrip("/")
-    token = sql_token()
-    if not host or not token:
-        raise HTTPException(500, "DATABRICKS_HOST / DATABRICKS_TOKEN missing from .env")
-    return host, token
+    host = os.getenv("DATABRICKS_HOST", "").rstrip("/")
+    if not host:
+        raise HTTPException(500, "DATABRICKS_HOST missing from environment")
+    return host, service_principal_token()
 
 
 def _upload_sync(host: str, token: str, volume_path: str, filename: str, content: bytes):

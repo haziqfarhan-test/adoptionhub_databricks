@@ -3,7 +3,7 @@ import json
 import asyncio
 import requests
 from fastapi import APIRouter, HTTPException, Depends
-from auth import get_user_token, current_token
+from auth import get_user_token, current_token, extract_llm_text
 from pydantic import BaseModel
 from typing import List, Any, Optional
 from dotenv import load_dotenv
@@ -33,7 +33,7 @@ def _call_serving_sync(prompt: str, max_tokens: int) -> str:
         timeout=60,
     )
     resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"]
+    return extract_llm_text(resp.json()["choices"][0]["message"])
 
 
 def _strip_md_fences(text: str) -> str:

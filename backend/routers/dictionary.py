@@ -5,8 +5,8 @@ import base64
 import asyncio
 import requests
 import openpyxl
-from fastapi import APIRouter, HTTPException, Depends
-from auth import get_user_token, current_token, sql_token
+from fastapi import APIRouter, HTTPException, Depends, Request
+from auth import get_user_token, service_principal_token
 from pydantic import BaseModel
 from typing import List, Dict, Any
 
@@ -19,12 +19,14 @@ DICT_SHEETS = ['System Level', 'Domain Level - All']
 CODE_SHEETS  = ['System - Code Table', 'Domain - Code Table']
 
 
-def _get_db_config():
-    host  = os.getenv("DATABRICKS_HOST", "").rstrip("/")
-    token = sql_token()
-    if not host or not token:
-        raise HTTPException(500, "DATABRICKS_HOST / DATABRICKS_TOKEN missing from .env")
-    return host, token
+def _get_db_config(request: Request):
+    host = os.getenv("DATABRICKS_HOST", "").rstrip("/")
+    if not host:
+        raise HTTPException(
+            500,
+            "DATABRICKS_HOST missing from environment."
+        )
+    return host, service_principal_token()
 
 
 def normalize_element_name(name: str) -> str:
@@ -131,6 +133,16 @@ def _write_sheet(wb, title: str, headers: list, rows: list, first: bool = False)
         ws.append([_cell_value(row, h) for h in headers])
 
 
+def _upload_bytes(host: str, token: str, full_path: str, content: bytes) -> requests.Response:
+    url = f"{host}/api/2.0/fs/files{full_path}"
+    return requests.put(
+        url,
+        headers={"Authorization": f"Bearer {token}"},
+        params={"overwrite": "true"},
+        data=content,
+    )
+
+
 def _build_and_upload_sync(
     host: str, token: str,
     dd: SheetData, mc: SheetData,
@@ -158,27 +170,23 @@ def _build_and_upload_sync(
     buf.seek(0)
 
     full_path = f"{DICT_VOLUME_PATH}/{filename}"
-    url = f"{host}/api/2.0/fs/files{full_path}"
-    resp = requests.put(
-        url,
-        headers={"Authorization": f"Bearer {token}"},
-        params={"overwrite": "true"},
-        data=buf.getvalue(),
+    content = buf.getvalue()
+
+    resp = _upload_bytes(host, token, full_path, content)
+    if resp.status_code in (200, 201, 204):
+        return full_path
+    raise HTTPException(
+        status_code=resp.status_code,
+        detail=f"Databricks upload failed ({resp.status_code}): {resp.text}",
     )
-    if resp.status_code not in (200, 201, 204):
-        raise HTTPException(
-            status_code=resp.status_code,
-            detail=f"Databricks upload failed ({resp.status_code}): {resp.text}",
-        )
-    return full_path
 
 
 @router.post("/upload-dictionary")
-async def upload_dictionary(req: UploadDictionaryRequest, _: str = Depends(get_user_token)):
-    host, token = _get_db_config()
+async def upload_dictionary(req: UploadDictionaryRequest, request: Request, _: str = Depends(get_user_token)):
+    host, service_token = _get_db_config(request)
     try:
         full_path = await asyncio.to_thread(
-            _build_and_upload_sync, host, token,
+            _build_and_upload_sync, host, service_token,
             req.data_dictionary, req.master_code, req.filename
         )
         return {"status": "uploaded", "path": full_path}
