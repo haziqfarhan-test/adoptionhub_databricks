@@ -1,21 +1,15 @@
 import { useState } from 'react'
-import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
+import { Routes, Route, NavLink, Link, Navigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import MetadataPage from './pages/MetadataPage'
-import { Database, BarChart2, Layers, Zap, Sun, Moon, Play, Sparkles, ShieldOff } from 'lucide-react'
+import { Zap, Sun, Moon, Layers, ShieldOff } from 'lucide-react'
 import MarketplacePage from './pages/MarketplacePage'
 import JobRunPage from './pages/JobRunPage'
 import ProfilePage from './pages/ProfilePage'
+import HomePage from './pages/HomePage'
 import { useCurrentUser } from './hooks/useCurrentUser'
-
-// roles: which roles can see this nav item
-const ALL_NAV = [
-  { to: '/',            label: 'Metadata & Dictionary', icon: Database,  roles: ['data_engineer'] },
-  { to: '/jobrun',      label: 'Job Run',               icon: Play,      roles: ['data_engineer'] },
-  { to: '/marketplace', label: 'Marketplace',           icon: Sparkles,  roles: ['data_engineer', 'basic_user'] },
-  { to: '/profiling',   label: 'Data Profiling',        icon: BarChart2, roles: ['data_engineer'] },
-  { to: '/modelling',   label: 'Gold Modelling',        icon: Layers,    roles: ['data_engineer'] },
-]
+import { useIdleReset } from './hooks/useIdleReset'
+import { ALL_NAV } from './nav'
 
 export default function App() {
   const [isDark, setIsDark] = useState(
@@ -23,6 +17,7 @@ export default function App() {
   )
   const location                    = useLocation()
   const { role, displayName, loading } = useCurrentUser()
+  useIdleReset()
 
   function toggleTheme() {
     const html = document.documentElement
@@ -68,7 +63,6 @@ export default function App() {
 
   const isEngineer = role === 'data_engineer'
   const nav        = ALL_NAV.filter(n => n.roles.includes(role))
-  const defaultTo  = isEngineer ? '/' : '/marketplace'
 
   return (
     <div className="h-screen flex flex-col bg-dark-950 overflow-hidden">
@@ -81,7 +75,7 @@ export default function App() {
         px-5 py-3 flex items-center gap-3
         shadow-apple-sm
       ">
-        <div className="flex items-center gap-2.5 flex-1">
+        <Link to="/" className="flex items-center gap-2.5 flex-1">
           <div className="w-7 h-7 rounded-[10px] bg-brand-500 flex items-center justify-center shadow-apple-blue">
             <Zap size={14} className="text-white" />
           </div>
@@ -94,7 +88,7 @@ export default function App() {
           ">
             DEMO
           </span>
-        </div>
+        </Link>
 
         {/* User display name */}
         {displayName && (
@@ -141,7 +135,6 @@ export default function App() {
               transition={{ delay: i * 0.06, ease: [0.25, 1, 0.5, 1] }}>
               <NavLink
                 to={to}
-                end={to === '/'}
                 className={({ isActive }) => `
                   flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-medium
                   transition-all duration-200
@@ -161,21 +154,25 @@ export default function App() {
         <main className="flex-1 p-8 overflow-auto">
           {/* MetadataPage always mounted for data_engineer only */}
           {isEngineer && (
-            <div className={location.pathname !== '/' ? 'hidden' : ''}>
+            <div className={location.pathname !== '/metadata' ? 'hidden' : ''}>
               <MetadataPage />
             </div>
           )}
 
           <Routes>
+            <Route path="/" element={<HomePage />} />
             {isEngineer && (
               <>
+                {/* MetadataPage itself renders via the always-mounted div above — this route
+                    just keeps react-router from treating /metadata as unmatched. */}
+                <Route path="/metadata"  element={null} />
                 <Route path="/jobrun"    element={<JobRunPage />} />
                 <Route path="/profiling" element={<ProfilePage />} />
                 <Route path="/modelling" element={<ComingSoon label="Gold Modelling" />} />
               </>
             )}
             <Route path="/marketplace" element={<MarketplacePage />} />
-            <Route path="*"            element={<Navigate to={defaultTo} replace />} />
+            <Route path="*"            element={<Navigate to="/" replace />} />
           </Routes>
         </main>
       </div>

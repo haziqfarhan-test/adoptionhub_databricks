@@ -20,10 +20,9 @@ const DEFAULT_CFG = {
   domain: 'sg', target_category: 'daily',
   bronze_catalog_name: '', bronze_archive_path: '', bronze_table_name: '',
   silver_catalog_name: '', silver_table_name: '',
-  silver_curated_path: '', silver_history_path: '', silver_invalid_path: '',
-  silver_write_mode: 'merge', silver_load_type: 'incremental',
-  source_system: 'NCSS', owner: 'NCSS', load_sequence: 1,
-  pipeline_name: 'pipeline_01_raw_to_bronze', active: true,
+  silver_curated_path: '', silver_invalid_path: '',
+  source_system: 'NCSS', owner: 'NCSS',
+  pipeline_name: '', scd_type: 'TYPE 1', active: true,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

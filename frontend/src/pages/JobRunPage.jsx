@@ -204,7 +204,7 @@ function EntityTable({ entities, selected, onToggle, onToggleAll, searchQuery })
                   : <Square size={14} />}
               </button>
             </th>
-            {['Entity', 'Source File', 'Bronze Path', 'Silver Table', 'Load Type', 'Domain', 'Frequency', 'Active'].map(h => (
+            {['Entity', 'Source File', 'Bronze Path', 'Silver Table', 'Domain', 'Frequency', 'Active'].map(h => (
               <th key={h} className="px-3 py-3 text-left font-semibold text-dark-300 uppercase tracking-[0.07em] text-[10px] whitespace-nowrap">
                 {h}
               </th>
@@ -251,11 +251,6 @@ function EntityTable({ entities, selected, onToggle, onToggleAll, searchQuery })
                 </td>
                 <td className="px-3 py-3.5 text-dark-300 font-mono truncate max-w-[140px]">
                   {entity.silver_table_name || '—'}
-                </td>
-                <td className="px-3 py-3.5">
-                  <Tag color={entity.silver_load_type === 'incremental' ? 'purple' : 'default'}>
-                    {entity.silver_load_type || '—'}
-                  </Tag>
                 </td>
                 <td className="px-3 py-3.5">
                   <Tag color="blue">{entity.domain || '—'}</Tag>
@@ -353,9 +348,6 @@ function EntityCard({ entity, status, taskLogs, isSelected, onClick }) {
       {/* Meta pills */}
       <div className="flex flex-wrap gap-1 mb-3">
         <Tag color="blue">{entity.domain}</Tag>
-        <Tag color={entity.silver_load_type === 'incremental' ? 'purple' : 'default'}>
-          {entity.silver_load_type || 'full'}
-        </Tag>
       </div>
 
       {/* Timing */}
@@ -505,7 +497,6 @@ function EntityDetailPanel({ entity, taskLogs, jobLogs, onClose }) {
           {[
             { label: 'Bronze Path',   value: entity.bronze_table_path },
             { label: 'Silver Table',  value: entity.silver_table_name },
-            { label: 'Load Type',     value: entity.silver_load_type  },
             { label: 'Source File',   value: entity.source_filename   },
           ].map(({ label, value }) => (
             <div key={label} className="bg-dark-800/60 rounded-xl p-3">
