@@ -9,3 +9,5 @@ env:
     value: "databricks-gpt-oss-120b"
   - name: UC_ADMIN_GROUP
     value: "admin"
+  - name: workspace_folder
+    value: "/Workspace/NCSS/central"
