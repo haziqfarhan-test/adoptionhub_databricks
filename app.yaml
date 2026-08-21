@@ -2,12 +2,12 @@ command: ["/bin/sh", "-c", ". /app/python/source_code/.venv/bin/activate && cd /
 
 env:
   - name: DATABRICKS_HOST
-    value: "https://dbc-4ae1d974-bd72.cloud.databricks.com"
+    value: "https://dbc-ba9f6430-6ec9.cloud.databricks.com"
   - name: DATABRICKS_HTTP_PATH
-    value: "/sql/1.0/warehouses/594e3fa04e4efe25"
+    value: "/sql/1.0/warehouses/e74b1de2658561d9"
   - name: DATABRICKS_SERVING_ENDPOINT
     value: "databricks-gpt-oss-120b"
   - name: UC_ADMIN_GROUP
-    value: "admin"
+    value: "Data Admin"
   - name: workspace_folder
     value: "/Workspace/NCSS/central"
