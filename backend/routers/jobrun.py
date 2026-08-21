@@ -17,7 +17,7 @@ DB_JOB_NAME_20 = "job_20_bronze_to_silver"
 
 ENTITY_COLS = [
     "job_name", "source_entity_name", "source_filename",
-    "bronze_table_path", "silver_table_name", "silver_load_type",
+    "bronze_table_path", "silver_table_name",
     "active", "domain", "target_category",
 ]
 

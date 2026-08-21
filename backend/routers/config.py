@@ -113,10 +113,10 @@ class TableConfig(BaseModel):
     source_system: str = "NCSS"
     target_category: str = "daily"
     active: bool = True
-    load_sequence: int = 1
     owner: str = "NCSS"
     domain: str = "sg"
-    pipeline_name: str = "pipeline_01_raw_to_bronze"
+    pipeline_name: str = ""
+    scd_type: str = "TYPE 1"
     source_entity_name: str = ""
     source_type: str = "csv"
     source_filename: str = ""
@@ -127,16 +127,11 @@ class TableConfig(BaseModel):
     bronze_table_name: str = ""
     bronze_table_path: str = ""
     bronze_archive_path: str = ""
-    bronze_write_mode: str = "overwrite"
-    bronze_load_type: str = "full"
     silver_catalog_name: str = ""
     silver_schema_name: str = "silver"
     silver_table_name: str = ""
     silver_curated_path: str = ""
-    silver_history_path: str = ""
     silver_invalid_path: str = ""
-    silver_write_mode: str = "overwrite"
-    silver_load_type: str = "full"
     silver_mandatory_columns: str = ""
     columns: List[ColumnConfig] = []
 
@@ -168,8 +163,7 @@ async def validate_columns(payload: List[ColumnConfig], _: str = Depends(get_use
 # ─────────────────────────────────────────────
 # SQL literal helper
 # ─────────────────────────────────────────────
-BOOL_COLS = {"active", "bronze_active_status", "silver_active_status"}
-INT_COLS  = {"load_sequence"}
+BOOL_COLS = {"active"}
 
 def sql_literal(key: str, val) -> str:
     """Convert a Python value to an inline SQL literal safe for Databricks."""
@@ -177,27 +171,20 @@ def sql_literal(key: str, val) -> str:
         return "NULL"
     if key in BOOL_COLS:
         return "TRUE" if val else "FALSE"
-    if key in INT_COLS:
-        return str(int(val))
     return "'" + str(val).replace("'", "''") + "'"
 
 # ─────────────────────────────────────────────
 # Columns in MERGE — excludes id, created_at, updated_at
 # ─────────────────────────────────────────────
 MERGE_COLS = [
-    "job_name", "source_system", "target_category", "active", "load_sequence",
+    "job_name", "source_system", "target_category", "active",
     "owner", "domain", "source_entity_name", "source_type", "source_filename",
-    "source_path", "source_delimiter", "pipeline_name", "lakehouse_group",
+    "source_path", "source_delimiter", "pipeline_name",
     "bronze_catalog_name", "bronze_schema_name", "bronze_table_name",
-    "bronze_table_path", "bronze_archive_path", "bronze_column_order",
-    "bronze_write_mode", "bronze_schema_mapping", "bronze_load_type",
-    "bronze_active_status", "bronze_silver_count_table_path",
+    "bronze_table_path", "bronze_archive_path",
     "silver_catalog_name", "silver_schema_name", "silver_table_name",
-    "silver_curated_path", "silver_history_path", "silver_invalid_path",
-    "silver_column_order", "silver_write_mode", "silver_schema_mapping",
-    "silver_primary_key", "silver_merge_keys", "silver_partition_key",
-    "silver_mandatory_columns", "silver_filter_condition", "silver_load_type",
-    "silver_active_status", "sheet_name",
+    "silver_curated_path", "silver_invalid_path", "silver_schema_mapping",
+    "silver_primary_key", "silver_mandatory_columns", "scd_type",
 ]
 
 # ─────────────────────────────────────────────
@@ -249,7 +236,6 @@ async def save_config(payload: TableConfig, _: str = Depends(get_user_token)):
     pk_cols  = [c for c in payload.columns if c.is_primary_key]
     all_cols = payload.columns
 
-    bronze_col_order  = ', '.join(c.safe_name for c in all_cols)
     bronze_schema_map = ', '.join(
         f"{c.safe_name} {(c.data_type or c.detected_type).capitalize()}"
         for c in all_cols
@@ -265,10 +251,10 @@ async def save_config(payload: TableConfig, _: str = Depends(get_user_token)):
         "source_system":                  payload.source_system,
         "target_category":                payload.target_category,
         "active":                         payload.active,
-        "load_sequence":                  payload.load_sequence,
         "owner":                          payload.owner,
         "domain":                         payload.domain,
         "pipeline_name":                  payload.pipeline_name,
+        "scd_type":                       payload.scd_type,
 
         # Source
         "source_entity_name":             payload.source_entity_name,
@@ -277,40 +263,22 @@ async def save_config(payload: TableConfig, _: str = Depends(get_user_token)):
         "source_path":                    payload.source_path,
         "source_delimiter":               payload.source_delimiter,
 
-        # Blanked fields
-        "lakehouse_group":                "",
-        "sheet_name":                     "",
-        "bronze_silver_count_table_path": "",
-        "silver_partition_key":           "",
-        "silver_filter_condition":        "",
-        "bronze_active_status":           None,
-        "silver_active_status":           None,
-
         # Bronze — fixed rules
         "bronze_catalog_name":            payload.bronze_catalog_name,
         "bronze_schema_name":             "bronze",
         "bronze_table_name":              payload.bronze_table_name,
         "bronze_table_path":              f"{payload.bronze_catalog_name}.bronze.{payload.bronze_table_name}",
         "bronze_archive_path":            payload.bronze_archive_path,
-        "bronze_column_order":            bronze_col_order,
-        "bronze_write_mode":              "overwrite",
-        "bronze_schema_mapping":          bronze_schema_map,
-        "bronze_load_type":               "full",
 
         # Silver
         "silver_catalog_name":            payload.silver_catalog_name,
         "silver_schema_name":             "silver",
         "silver_table_name":              payload.silver_table_name,
         "silver_curated_path":            payload.silver_curated_path,
-        "silver_history_path":            payload.silver_history_path,
         "silver_invalid_path":            payload.silver_invalid_path,
-        "silver_column_order":            bronze_col_order,
-        "silver_write_mode":              "merge",
         "silver_schema_mapping":          bronze_schema_map,
         "silver_primary_key":             pk_string,
-        "silver_merge_keys":              pk_string,
         "silver_mandatory_columns":       mandatory_cols,
-        "silver_load_type":               payload.silver_load_type,
     }
 
     try:
@@ -416,7 +384,6 @@ CREATE TABLE IF NOT EXISTS {TABLE_REF} (
     source_system STRING,
     target_category STRING,
     active BOOLEAN,
-    load_sequence INT,
     owner STRING,
     domain STRING,
     source_entity_name STRING,
@@ -425,35 +392,20 @@ CREATE TABLE IF NOT EXISTS {TABLE_REF} (
     source_path STRING,
     source_delimiter STRING,
     pipeline_name STRING,
-    lakehouse_group STRING,
+    scd_type STRING,
     bronze_catalog_name STRING,
     bronze_schema_name STRING,
     bronze_table_name STRING,
     bronze_table_path STRING,
     bronze_archive_path STRING,
-    bronze_column_order STRING,
-    bronze_write_mode STRING,
-    bronze_schema_mapping STRING,
-    bronze_load_type STRING,
-    bronze_active_status BOOLEAN,
-    bronze_silver_count_table_path STRING,
     silver_catalog_name STRING,
     silver_schema_name STRING,
     silver_table_name STRING,
     silver_curated_path STRING,
-    silver_history_path STRING,
     silver_invalid_path STRING,
-    silver_column_order STRING,
-    silver_write_mode STRING,
     silver_schema_mapping STRING,
     silver_primary_key STRING,
-    silver_merge_keys STRING,
-    silver_partition_key STRING,
     silver_mandatory_columns STRING,
-    silver_filter_condition STRING,
-    silver_load_type STRING,
-    silver_active_status BOOLEAN,
-    sheet_name STRING,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()
 ) USING DELTA

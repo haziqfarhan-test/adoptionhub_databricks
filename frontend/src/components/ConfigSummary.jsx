@@ -66,7 +66,9 @@ export default function ConfigSummary({ config, file, onReset }) {
 
   const rows = [
     ['Job name',          config.job_name],
+    ['Pipeline name',     config.pipeline_name],
     ['Domain',            config.domain],
+    ['SCD type',          config.scd_type],
     ['Source type',       config.source_type],
     ['Source filename',   config.source_filename],
     ['Source path',       config.source_path],
@@ -76,12 +78,9 @@ export default function ConfigSummary({ config, file, onReset }) {
     ['Silver catalog',    config.silver_catalog_name],
     ['Silver table',      config.silver_table_name],
     ['Silver curated',    config.silver_curated_path],
-    ['Silver history',    config.silver_history_path],
     ['Silver invalid',    config.silver_invalid_path],
     ['Primary key',       config.silver_primary_key || '(none)'],
     ['Mandatory cols',    config.silver_mandatory_columns || '(none)'],
-    ['Silver write mode', config.silver_write_mode],
-    ['Silver load type',  config.silver_load_type],
   ]
 
   const slideIn = {

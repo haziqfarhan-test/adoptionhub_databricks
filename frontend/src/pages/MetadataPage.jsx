@@ -28,7 +28,7 @@ const SUBSECTIONS = [
 
 const NEW_DOMAIN_OPTION   = '__new_domain__'
 const TARGET_CATEGORIES   = ['daily', 'weekly', 'monthly', 'yearly']
-const SILVER_LOAD_TYPES   = ['incremental', 'overwrite']
+const SCD_TYPES           = ['TYPE 1', 'TYPE 2', 'TYPE 3']
 
 const DB_RESERVED = new Set([
   'select','from','where','table','column','index','view','create','drop',
@@ -163,10 +163,9 @@ const DEFAULT_CFG = {
   domain: 'sg', target_category: 'daily',
   bronze_catalog_name: '', bronze_archive_path: '', bronze_table_name: '',
   silver_catalog_name: '', silver_table_name: '',
-  silver_curated_path: '', silver_history_path: '', silver_invalid_path: '',
-  silver_write_mode: 'merge', silver_load_type: 'incremental',
-  source_system: 'NCSS', owner: 'NCSS', load_sequence: 1,
-  pipeline_name: 'pipeline_01_raw_to_bronze', active: true,
+  silver_curated_path: '', silver_invalid_path: '',
+  source_system: 'NCSS', owner: 'NCSS',
+  pipeline_name: '', scd_type: 'TYPE 1', active: true,
 }
 
 export default function MetadataPage() {
@@ -195,6 +194,10 @@ export default function MetadataPage() {
   const [configTableStatus, setConfigTableStatus]   = useState(null)
   const [configTableCreating, setConfigTableCreating] = useState(false)
   const [configTableError, setConfigTableError]       = useState('')
+
+  // Bumped to force-remount DictionarySection (its state is not persisted to
+  // localStorage) whenever the idle/new-session full reset fires.
+  const [dictResetKey, setDictResetKey] = useState(0)
 
   function set(field) { return val => setCfg(c => ({ ...c, [field]: val })) }
 
@@ -251,10 +254,10 @@ export default function MetadataPage() {
       silver_catalog_name: catalog,
       source_path:         c.source_path.includes('/Volumes/') ? `/Volumes/${catalog}/raw/file_upload/` : c.source_path,
       silver_curated_path: silver_tn ? `${catalog}.silver.${silver_tn}` : '',
-      silver_history_path: silver_tn ? `${catalog}.silver.${silver_tn}_hist` : '',
       silver_invalid_path: silver_tn ? `${catalog}.silver.${silver_tn}_reject` : '',
+      pipeline_name:       c.bronze_table_name ? `pip_${c.bronze_table_name}` : '',
     }))
-  }, [cfg.domain, newDomainName, cfg.silver_table_name])
+  }, [cfg.domain, newDomainName, cfg.silver_table_name, cfg.bronze_table_name])
 
   // Listen for Data Profiling handoff. MetadataPage is always mounted (never unmounted),
   // so localStorage writes from ProfilePage don't update state here. The event bypasses
@@ -276,6 +279,18 @@ export default function MetadataPage() {
     window.addEventListener('profiling-handoff', onProfilingHandoff)
     return () => window.removeEventListener('profiling-handoff', onProfilingHandoff)
   }, []) // setters from useLocalStorage are stable references — empty deps is correct
+
+  // Idle timeout / new-session reset — dispatched by useIdleReset (App.jsx).
+  // Mirrors clicking "Start over" and also clears the Dictionary tab's
+  // in-memory state, which otherwise only clears on a hard refresh.
+  useEffect(() => {
+    function onFullReset() {
+      handleReset()
+      setDictResetKey(k => k + 1)
+    }
+    window.addEventListener('metadata-full-reset', onFullReset)
+    return () => window.removeEventListener('metadata-full-reset', onFullReset)
+  }, []) // handleReset closes over stable useLocalStorage setters — empty deps is correct
 
   async function handleFileDrop(file) {
     setLoading(true)
@@ -470,7 +485,7 @@ export default function MetadataPage() {
 
           {/* Required fields */}
           <Section title="Required fields" subtitle="Select domain and target category — everything else auto-fills.">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="text-[11px] text-dark-200 block mb-1.5 font-semibold tracking-wide uppercase">
                   Domain<span className="text-red-500 dark:text-red-400 ml-0.5">*</span>
@@ -508,6 +523,8 @@ export default function MetadataPage() {
               </div>
               <Field label="Target category" required value={cfg.target_category}
                 onChange={set('target_category')} options={TARGET_CATEGORIES} />
+              <Field label="SCD type" required value={cfg.scd_type}
+                onChange={set('scd_type')} options={SCD_TYPES} />
             </div>
           </Section>
 
@@ -535,28 +552,24 @@ export default function MetadataPage() {
           <Section title="Bronze layer" subtitle="Fixed rules applied: overwrite mode, full load."
             collapsible defaultOpen>
             <div className="grid grid-cols-3 gap-4">
-              <Field label="Catalog"      value={cfg.bronze_catalog_name}                           onChange={() => {}} readOnly />
-              <Field label="Schema"       value="bronze"                                            onChange={() => {}} readOnly />
-              <Field label="Table name"   value={cfg.bronze_table_name}                             onChange={set('bronze_table_name')} />
-              <Field label="Table path"   value={`${cfg.bronze_catalog_name}.bronze.${cfg.bronze_table_name}`} onChange={() => {}} readOnly />
-              <Field label="Archive path" value={cfg.bronze_archive_path}                           onChange={() => {}} readOnly />
-              <Field label="Write mode"   value="overwrite"                                         onChange={() => {}} readOnly />
-              <Field label="Load type"    value="full"                                              onChange={() => {}} readOnly />
+              <Field label="Catalog"        value={cfg.bronze_catalog_name}                           onChange={() => {}} readOnly />
+              <Field label="Schema"         value="bronze"                                            onChange={() => {}} readOnly />
+              <Field label="Table name"     value={cfg.bronze_table_name}                             onChange={set('bronze_table_name')} />
+              <Field label="Table path"     value={`${cfg.bronze_catalog_name}.bronze.${cfg.bronze_table_name}`} onChange={() => {}} readOnly />
+              <Field label="Archive path"   value={cfg.bronze_archive_path}                           onChange={() => {}} readOnly />
+              <Field label="Pipeline name"  value={cfg.pipeline_name}                                 onChange={() => {}} readOnly />
             </div>
           </Section>
 
           {/* Silver */}
-          <Section title="Silver layer" subtitle="Paths auto-built. Write mode fixed to merge. Choose load type."
+          <Section title="Silver layer" subtitle="Paths auto-built. Write mode fixed to merge."
             collapsible defaultOpen>
             <div className="grid grid-cols-3 gap-4">
               <Field label="Catalog"       value={cfg.silver_catalog_name} onChange={() => {}} readOnly />
               <Field label="Schema"        value="silver"                  onChange={() => {}} readOnly />
               <Field label="Table name"    value={cfg.silver_table_name}   onChange={set('silver_table_name')} />
               <Field label="Curated path"  value={cfg.silver_curated_path} onChange={() => {}} readOnly />
-              <Field label="History path"  value={cfg.silver_history_path} onChange={() => {}} readOnly />
               <Field label="Invalid path"  value={cfg.silver_invalid_path} onChange={() => {}} readOnly />
-              <Field label="Write mode"    value="merge"                   onChange={() => {}} readOnly />
-              <Field label="Load type"     value={cfg.silver_load_type}    onChange={set('silver_load_type')}    options={SILVER_LOAD_TYPES} />
             </div>
           </Section>
 
@@ -615,7 +628,7 @@ export default function MetadataPage() {
 
       {/* ── Data Dictionary subsection — always mounted so uploaded file state is preserved ── */}
       <div className={activeTab !== 'dictionary' ? 'hidden' : ''}>
-        <DictionarySection />
+        <DictionarySection key={dictResetKey} />
       </div>
     </div>
   )
